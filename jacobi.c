@@ -63,20 +63,14 @@ int main(int argc, char * argv[]) {
   start_time=MPI_Wtime();
 
   if (myrank > 0) {
-    MPI_Send_init(&u_k[ny], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[0]);
-    MPI_Recv_init(&u_k[0], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[1]);
+    MPI_Isend(&u_k[ny], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[0]);
+    MPI_Irecv(&u_k[0], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[1]);
   }
   if (myrank < size-1) {
-    MPI_Send_init(&u_k[local_nx * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[2]);
-    MPI_Recv_init(&u_k[(local_nx+1) * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[3]);
+    MPI_Isend(&u_k[local_nx * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[2]);
+    MPI_Irecv(&u_k[(local_nx+1) * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[3]);
   }
   MPI_Request requestColl;
-  MPIX_Allreduce_init(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
-
-  MPI_Start(&requests[0]); // send UP
-  MPI_Start(&requests[1]); // recv UP
-  MPI_Start(&requests[2]); // send DOWN
-  MPI_Start(&requests[3]); // recv DOWN
 
   for (k=0;k<MAX_ITERATIONS;k++) {
 
@@ -87,7 +81,7 @@ int main(int argc, char * argv[]) {
           tmpnorm=tmpnorm+pow(u_k[j+(i*ny)]*4-u_k[(j-1) + (i*ny)]-u_k[(j+1) + (i*ny)] - u_k[j+((i-1)*ny)] - u_k[j+((i+1)*ny)], 2);
         }
       }
-      MPI_Start(&requestColl);
+      MPI_Iallreduce(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
     }
 
     MPI_Wait(&requests[1], MPI_STATUS_IGNORE); // recv UP
@@ -96,7 +90,8 @@ int main(int argc, char * argv[]) {
         u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
       }
     }
-    MPI_Start(&requests[1]); // recv UP
+    if (myrank > 0)
+      MPI_Irecv(&u_k[0], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[1]); // recv UP
 
     MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
     i=local_nx; {
@@ -104,7 +99,8 @@ int main(int argc, char * argv[]) {
         u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
       }
     }
-    MPI_Start(&requests[3]); // recv DOWN
+    if (myrank < size-1)
+      MPI_Irecv(&u_k[(local_nx+1) * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[3]); // recv DOWN
 
     for (i=2;i<=local_nx-1;i++) {
       for (j=0;j<ny;j++) {
@@ -120,11 +116,13 @@ int main(int argc, char * argv[]) {
     
     MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
     memcpy(&u_k[           ny], &u_kp1[           ny], sizeof(double) * ny);
-    MPI_Start(&requests[0]); // send UP
+    if (myrank > 0)
+      MPI_Isend(&u_k[ny], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[0]); // send UP
 
     MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
     memcpy(&u_k[local_nx * ny], &u_kp1[local_nx * ny], sizeof(double) * ny);
-    MPI_Start(&requests[2]); // send DOWN
+    if (myrank < size-1)
+      MPI_Isend(&u_k[local_nx * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[2]); // send DOWN
 
     memcpy(&u_k[       2 * ny], &u_kp1[       2 * ny], sizeof(double) * ny * (local_nx-2));
 
@@ -135,16 +133,6 @@ int main(int argc, char * argv[]) {
   MPI_Wait(&requests[1], MPI_STATUS_IGNORE); // recv UP
   MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
   MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
-
-  if (myrank > 0) {
-    MPI_Request_free(&requests[0]);
-    MPI_Request_free(&requests[1]);
-  }
-  if (myrank < size-1) {
-    MPI_Request_free(&requests[2]);
-    MPI_Request_free(&requests[3]);
-  }
-  MPI_Request_free(&requestColl);
 
   if (myrank==0) printf("\nTerminated on %d iterations, Relative Norm=%e, Total time=%e seconds\n", k, norm,
                         MPI_Wtime() - start_time);
