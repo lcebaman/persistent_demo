@@ -61,28 +61,27 @@ int main(int argc, char * argv[]) {
 
   start_time=MPI_Wtime();
 
+  if (myrank > 0) {
+    MPI_Send_init(&u_k[ny], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[0]);
+    MPI_Recv_init(&u_k[0], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[1]);
+  }
+  if (myrank < size-1) {
+    MPI_Send_init(&u_k[local_nx * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[2]);
+    MPI_Recv_init(&u_k[(local_nx+1) * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[3]);
+  }
+  MPI_Request requestColl;
+  MPIX_Allreduce_init(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
+
   for (k=0;k<MAX_ITERATIONS;k++) {
     if (myrank > 0) {
-      MPI_Send_init(&u_k[ny], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[0]);
       MPI_Start(&requests[0]);
-      MPI_Recv_init(&u_k[0], ny, MPI_DOUBLE, myrank-1, 0, MPI_COMM_WORLD, &requests[1]);
       MPI_Start(&requests[1]);
     }
     if (myrank < size-1) {
-      MPI_Send_init(&u_k[local_nx * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[2]);
       MPI_Start(&requests[2]);
-      MPI_Recv_init(&u_k[(local_nx+1) * ny], ny, MPI_DOUBLE, myrank+1, 0, MPI_COMM_WORLD, &requests[3]);
       MPI_Start(&requests[3]);
     }
     MPI_Waitall(4, requests, MPI_STATUSES_IGNORE);
-    if (myrank > 0) {
-      MPI_Request_free(&requests[0]);
-      MPI_Request_free(&requests[1]);
-    }
-    if (myrank < size-1) {
-      MPI_Request_free(&requests[2]);
-      MPI_Request_free(&requests[3]);
-    }
 
     tmpnorm=0.0;
     for (i=1;i<=local_nx;i++) {
@@ -91,11 +90,8 @@ int main(int argc, char * argv[]) {
       }
     }
 
-    MPI_Request requestColl;
-    MPIX_Allreduce_init(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
     MPI_Start(&requestColl);
     MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
-    MPI_Request_free(&requestColl);
 
     norm=sqrt(rnorm)/bnorm;
     if (norm < CONVERGENCE_ACCURACY) break;
@@ -111,7 +107,17 @@ int main(int argc, char * argv[]) {
     
     if (k % REPORT_NORM_PERIOD == 0 && myrank==0) printf("Iteration= %d Relative Norm=%e\n", k, norm);
   }
-  
+
+  if (myrank > 0) {
+    MPI_Request_free(&requests[0]);
+    MPI_Request_free(&requests[1]);
+  }
+  if (myrank < size-1) {
+    MPI_Request_free(&requests[2]);
+    MPI_Request_free(&requests[3]);
+  }
+  MPI_Request_free(&requestColl);
+
   if (myrank==0) printf("\nTerminated on %d iterations, Relative Norm=%e, Total time=%e seconds\n", k, norm,
                         MPI_Wtime() - start_time);
   free(u_k);
