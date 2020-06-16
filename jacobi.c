@@ -89,17 +89,17 @@ int main(int argc, char * argv[]) {
         tmpnorm=tmpnorm+pow(u_k[j+(i*ny)]*4-u_k[(j-1) + (i*ny)]-u_k[(j+1) + (i*ny)] - u_k[j+((i-1)*ny)] - u_k[j+((i+1)*ny)], 2);
       }
     }
-
     MPI_Start(&requestColl);
-    MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
 
-    norm=sqrt(rnorm)/bnorm;
-    if (norm < CONVERGENCE_ACCURACY) break;
     for (i=1;i<=local_nx;i++) {
       for (j=0;j<ny;j++) {
         u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
       }
     }
+
+    MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
+    norm=sqrt(rnorm)/bnorm;
+    if (norm < CONVERGENCE_ACCURACY) break;
     
     memcpy(temp, u_kp1, sizeof(double) * (local_nx + 2) * ny);
     memcpy(u_kp1, u_k, sizeof(double) * (local_nx + 2) * ny);
