@@ -74,11 +74,12 @@ int main(int argc, char * argv[]) {
   MPI_Request requestColl;
   MPIX_Allreduce_init(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
 
+  MPI_Start(&requests[0]); // send UP
+  MPI_Start(&requests[1]); // recv UP
+  MPI_Start(&requests[2]); // send DOWN
+  MPI_Start(&requests[3]); // recv DOWN
+
   for (k=0;k<MAX_ITERATIONS;k++) {
-    MPI_Start(&requests[0]); // send UP
-    MPI_Start(&requests[1]); // recv UP
-    MPI_Start(&requests[2]); // send DOWN
-    MPI_Start(&requests[3]); // recv DOWN
 
     if (k % COMPUTE_NORM_PERIOD == 0) {
       tmpnorm=0.0;
@@ -112,8 +113,18 @@ int main(int argc, char * argv[]) {
     memcpy(u_kp1, u_k, sizeof(double) * (local_nx + 2) * ny);
     memcpy(u_k, temp, sizeof(double) * (local_nx + 2) * ny);
     
+    MPI_Start(&requests[0]); // send UP
+    MPI_Start(&requests[1]); // recv UP
+    MPI_Start(&requests[2]); // send DOWN
+    MPI_Start(&requests[3]); // recv DOWN
+
     if (k % REPORT_NORM_PERIOD == 0 && myrank==0) printf("Iteration= %d Relative Norm=%e\n", k, norm);
   }
+
+  MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
+  MPI_Wait(&requests[1], MPI_STATUS_IGNORE); // recv UP
+  MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
+  MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
 
   if (myrank > 0) {
     MPI_Request_free(&requests[0]);
