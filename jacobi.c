@@ -14,6 +14,8 @@
 #define CONVERGENCE_ACCURACY 1e-4
 // How often to report the norm
 #define REPORT_NORM_PERIOD 1000
+// How often to compute the norm
+#define COMPUTE_NORM_PERIOD 10
 
 int nx, ny;
 
@@ -83,13 +85,15 @@ int main(int argc, char * argv[]) {
     }
     MPI_Waitall(4, requests, MPI_STATUSES_IGNORE);
 
-    tmpnorm=0.0;
-    for (i=1;i<=local_nx;i++) {
-      for (j=0;j<ny;j++) {
-        tmpnorm=tmpnorm+pow(u_k[j+(i*ny)]*4-u_k[(j-1) + (i*ny)]-u_k[(j+1) + (i*ny)] - u_k[j+((i-1)*ny)] - u_k[j+((i+1)*ny)], 2);
+    if (k % COMPUTE_NORM_PERIOD == 0) {
+      tmpnorm=0.0;
+      for (i=1;i<=local_nx;i++) {
+        for (j=0;j<ny;j++) {
+          tmpnorm=tmpnorm+pow(u_k[j+(i*ny)]*4-u_k[(j-1) + (i*ny)]-u_k[(j+1) + (i*ny)] - u_k[j+((i-1)*ny)] - u_k[j+((i+1)*ny)], 2);
+        }
       }
+      MPI_Start(&requestColl);
     }
-    MPI_Start(&requestColl);
 
     for (i=1;i<=local_nx;i++) {
       for (j=0;j<ny;j++) {
@@ -97,9 +101,11 @@ int main(int argc, char * argv[]) {
       }
     }
 
-    MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
-    norm=sqrt(rnorm)/bnorm;
-    if (norm < CONVERGENCE_ACCURACY) break;
+    if (k % COMPUTE_NORM_PERIOD == 0) {
+      MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
+      norm=sqrt(rnorm)/bnorm;
+      if (norm < CONVERGENCE_ACCURACY) break;
+    }
     
     memcpy(temp, u_kp1, sizeof(double) * (local_nx + 2) * ny);
     memcpy(u_kp1, u_k, sizeof(double) * (local_nx + 2) * ny);
