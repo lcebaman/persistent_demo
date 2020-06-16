@@ -43,7 +43,6 @@ int main(int argc, char * argv[]) {
 
   double * u_k = malloc(sizeof(double) * (local_nx + 2) * ny);
   double * u_kp1 = malloc(sizeof(double) * (local_nx + 2) * ny);
-  double * temp = malloc(sizeof(double) * (local_nx + 2) * ny);
   double start_time;
 
   initialise(u_k, u_kp1, local_nx, myrank, size);
@@ -120,14 +119,14 @@ int main(int argc, char * argv[]) {
     }
     
     MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
-    MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
-
-    memcpy( &temp[ny], &u_kp1[ny], sizeof(double) * local_nx * ny);
-    memcpy(&u_kp1[ny],   &u_k[ny], sizeof(double) * local_nx * ny);
-    memcpy(  &u_k[ny],  &temp[ny], sizeof(double) * local_nx * ny);
-    
+    memcpy(&u_k[           ny], &u_kp1[           ny], sizeof(double) * ny);
     MPI_Start(&requests[0]); // send UP
+
+    MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
+    memcpy(&u_k[local_nx * ny], &u_kp1[local_nx * ny], sizeof(double) * ny);
     MPI_Start(&requests[2]); // send DOWN
+
+    memcpy(&u_k[       2 * ny], &u_kp1[       2 * ny], sizeof(double) * ny * (local_nx-2));
 
     if (k % REPORT_NORM_PERIOD == 0 && myrank==0) printf("Iteration= %d Relative Norm=%e\n", k, norm);
   }
@@ -151,7 +150,6 @@ int main(int argc, char * argv[]) {
                         MPI_Wtime() - start_time);
   free(u_k);
   free(u_kp1);
-  free(temp);
 
   MPI_Finalize();
   return 0;
