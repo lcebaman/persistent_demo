@@ -92,16 +92,26 @@ int main(int argc, char * argv[]) {
     }
 
     MPI_Wait(&requests[1], MPI_STATUS_IGNORE); // recv UP
-    MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
-
-    for (i=1;i<=local_nx;i++) {
+    i=1; {
       for (j=0;j<ny;j++) {
         u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
       }
     }
-
     MPI_Start(&requests[1]); // recv UP
+
+    MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
+    i=local_nx; {
+      for (j=0;j<ny;j++) {
+        u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
+      }
+    }
     MPI_Start(&requests[3]); // recv DOWN
+
+    for (i=2;i<=local_nx-1;i++) {
+      for (j=0;j<ny;j++) {
+        u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
+      }
+    }
 
     if (k % COMPUTE_NORM_PERIOD == 0) {
       MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
@@ -112,9 +122,9 @@ int main(int argc, char * argv[]) {
     MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
     MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
 
-    memcpy( temp[ny], u_kp1[ny], sizeof(double) * local_nx * ny);
-    memcpy(u_kp1[ny],   u_k[ny], sizeof(double) * local_nx * ny);
-    memcpy(  u_k[ny],  temp[ny], sizeof(double) * local_nx * ny);
+    memcpy( &temp[ny], &u_kp1[ny], sizeof(double) * local_nx * ny);
+    memcpy(&u_kp1[ny],   &u_k[ny], sizeof(double) * local_nx * ny);
+    memcpy(  &u_k[ny],  &temp[ny], sizeof(double) * local_nx * ny);
     
     MPI_Start(&requests[0]); // send UP
     MPI_Start(&requests[2]); // send DOWN
