@@ -75,15 +75,10 @@ int main(int argc, char * argv[]) {
   MPIX_Allreduce_init(&tmpnorm, &rnorm, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD, &requestColl);
 
   for (k=0;k<MAX_ITERATIONS;k++) {
-    if (myrank > 0) {
-      MPI_Start(&requests[0]);
-      MPI_Start(&requests[1]);
-    }
-    if (myrank < size-1) {
-      MPI_Start(&requests[2]);
-      MPI_Start(&requests[3]);
-    }
-    MPI_Waitall(4, requests, MPI_STATUSES_IGNORE);
+    MPI_Start(&requests[0]); // send UP
+    MPI_Start(&requests[1]); // recv UP
+    MPI_Start(&requests[2]); // send DOWN
+    MPI_Start(&requests[3]); // recv DOWN
 
     if (k % COMPUTE_NORM_PERIOD == 0) {
       tmpnorm=0.0;
@@ -95,11 +90,17 @@ int main(int argc, char * argv[]) {
       MPI_Start(&requestColl);
     }
 
+    MPI_Wait(&requests[1], MPI_STATUS_IGNORE); // recv UP
+    MPI_Wait(&requests[3], MPI_STATUS_IGNORE); // recv DOWN
+
     for (i=1;i<=local_nx;i++) {
       for (j=0;j<ny;j++) {
         u_kp1[j+(i*ny)]=0.25 * (u_k[(j-1) + (i*ny)]+u_k[(j+1) + (i*ny)] + u_k[j+ ((i+1)*ny)] + u_k[j+ ((i-1)*ny)]);
       }
     }
+
+    MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
+    MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
 
     if (k % COMPUTE_NORM_PERIOD == 0) {
       MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
