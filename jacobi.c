@@ -100,8 +100,8 @@ int main(int argc, char * argv[]) {
       }
     }
 
-    MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
-    MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
+    MPI_Start(&requests[1]); // recv UP
+    MPI_Start(&requests[3]); // recv DOWN
 
     if (k % COMPUTE_NORM_PERIOD == 0) {
       MPI_Wait(&requestColl, MPI_STATUS_IGNORE);
@@ -109,14 +109,15 @@ int main(int argc, char * argv[]) {
       if (norm < CONVERGENCE_ACCURACY) break;
     }
     
-    memcpy(temp, u_kp1, sizeof(double) * (local_nx + 2) * ny);
-    memcpy(u_kp1, u_k, sizeof(double) * (local_nx + 2) * ny);
-    memcpy(u_k, temp, sizeof(double) * (local_nx + 2) * ny);
+    MPI_Wait(&requests[0], MPI_STATUS_IGNORE); // send UP
+    MPI_Wait(&requests[2], MPI_STATUS_IGNORE); // send DOWN
+
+    memcpy( temp[ny], u_kp1[ny], sizeof(double) * local_nx * ny);
+    memcpy(u_kp1[ny],   u_k[ny], sizeof(double) * local_nx * ny);
+    memcpy(  u_k[ny],  temp[ny], sizeof(double) * local_nx * ny);
     
     MPI_Start(&requests[0]); // send UP
-    MPI_Start(&requests[1]); // recv UP
     MPI_Start(&requests[2]); // send DOWN
-    MPI_Start(&requests[3]); // recv DOWN
 
     if (k % REPORT_NORM_PERIOD == 0 && myrank==0) printf("Iteration= %d Relative Norm=%e\n", k, norm);
   }
